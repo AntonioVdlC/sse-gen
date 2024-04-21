@@ -4,9 +4,10 @@ import { SSEClient as _SSEClient, SSEClientStatus } from "../src";
 vi.stubGlobal(
   "EventSource",
   class EventSource {
-    onmessage: ((event: MessageEvent) => void) | null = null;
-    onerror: ((event: Event) => void) | null = null;
-    onopen: ((event: Event) => void) | null = null;
+    onmessage: ((event: MessageEvent) => void) | null = vi.fn();
+    onerror: ((event: Event) => void) | null = vi.fn();
+    onopen: ((event: Event) => void) | null = vi.fn();
+    close = vi.fn();
 
     url: string;
 
@@ -50,15 +51,6 @@ class SSEClient<T> extends _SSEClient<T> {
   }
 }
 
-function mockEventSource(): EventSource {
-  return {
-    onmessage: vi.fn(),
-    onerror: vi.fn(),
-    onopen: vi.fn(),
-    close: vi.fn(),
-  } as unknown as EventSource;
-}
-
 function _for(duration: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, duration);
@@ -67,23 +59,8 @@ function _for(duration: number): Promise<void> {
 
 describe("SSEClient", () => {
   describe("connect", () => {
-    it("should not create a new EventSource if already connected", () => {
-      const client = new SSEClient("http://localhost:3000");
-
-      const eventSource = mockEventSource();
-      client.eventSource = eventSource;
-
-      client.connect();
-      client.connect();
-
-      expect(client.eventSource).toBe(eventSource);
-    });
-
     it("should connect to the server", () => {
       const client = new SSEClient("http://localhost:3000");
-
-      const eventSource = mockEventSource();
-      client.eventSource = eventSource;
 
       const handleOpen = vi.fn();
       client.connect(handleOpen);
@@ -112,12 +89,11 @@ describe("SSEClient", () => {
     it("should close the connection", () => {
       const client = new SSEClient("http://localhost:3000");
 
-      const eventSource = mockEventSource();
-      client.eventSource = eventSource;
-
+      client.connect();
+      const eventSource = client.eventSource;
       client.close();
 
-      expect(eventSource.close).toHaveBeenCalled();
+      expect(eventSource!.close).toHaveBeenCalled();
       expect(client.eventSource).toBeNull();
     });
 
@@ -125,9 +101,7 @@ describe("SSEClient", () => {
       const handleStatusUpdate = vi.fn();
       const client = new SSEClient("http://localhost:3000", handleStatusUpdate);
 
-      const eventSource = mockEventSource();
-      client.eventSource = eventSource;
-
+      client.connect();
       client.close();
 
       expect(handleStatusUpdate).toHaveBeenCalledWith(SSEClientStatus.CLOSED);
@@ -137,9 +111,6 @@ describe("SSEClient", () => {
   describe("catch", () => {
     it("should catch errors", () => {
       const client = new SSEClient("http://localhost:3000");
-
-      const eventSource = mockEventSource();
-      client.eventSource = eventSource;
 
       client.connect();
 
@@ -154,25 +125,20 @@ describe("SSEClient", () => {
     it("should close the connection", () => {
       const client = new SSEClient("http://localhost:3000");
 
-      const eventSource = mockEventSource();
-      client.eventSource = eventSource;
-
       client.connect();
+      const eventSource = client.eventSource;
 
       const error = new Event("error");
       client.catch(() => {});
 
       client._simulateError(error);
-      expect(eventSource.close).toHaveBeenCalled();
+      expect(eventSource!.close).toHaveBeenCalled();
     });
   });
 
   describe("on", () => {
     it("should listen to messages", () => {
       const client = new SSEClient("http://localhost:3000");
-
-      const eventSource = mockEventSource();
-      client.eventSource = eventSource;
 
       client.connect();
 
@@ -186,9 +152,6 @@ describe("SSEClient", () => {
 
     it("should await the handler if it returns a promise", async () => {
       const client = new SSEClient("http://localhost:3000");
-
-      const eventSource = mockEventSource();
-      client.eventSource = eventSource;
 
       client.connect();
 

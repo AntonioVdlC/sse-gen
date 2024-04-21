@@ -42,10 +42,8 @@ class SSEClient<T> {
   }
 
   connect(): void {
-    if (!this._eventSource) {
-      this._eventSource = new EventSource(this._url);
-      this._updateStatus(SSEClientStatus.CONNECTING);
-    }
+    this._eventSource = new EventSource(this._url);
+    this._updateStatus(SSEClientStatus.CONNECTING);
 
     this._eventSource.onopen = () => {
       this._updateStatus(SSEClientStatus.OPEN);
