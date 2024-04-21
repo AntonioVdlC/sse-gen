@@ -9,6 +9,14 @@ class SSEClient extends _SSEClient {
     }
   }
 
+  connect(onOpen?: (event: Event) => void): void {
+    super.connect();
+
+    if (onOpen && this._eventSource) {
+      this._eventSource.onopen = onOpen;
+    }
+  }
+
   get eventSource(): EventSource | null {
     return this._eventSource;
   }
