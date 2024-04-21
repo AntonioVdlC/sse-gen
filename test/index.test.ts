@@ -140,15 +140,15 @@ describe("SSEClient", () => {
 
       expect(events).toEqual([]);
       client._simulateMessage(message_1);
-      await _for(100);
+      await _for(70);
       expect(events).toEqual([message_1]);
 
       client._simulateMessage(message_2);
       client._simulateMessage(message_3);
       expect(events).toEqual([message_1]);
-      await _for(100);
+      await _for(70);
       expect(events).toEqual([message_1, message_2]);
-      await _for(100);
+      await _for(70);
       expect(events).toEqual([message_1, message_2, message_3]);
     });
   });
