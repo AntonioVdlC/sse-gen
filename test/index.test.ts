@@ -1,12 +1,24 @@
 import { describe, it, expect, vi } from "vitest";
-import { SSEClient as _SSEClient } from "../src";
+import { SSEClient as _SSEClient, SSEClientStatus } from "../src";
+
+vi.stubGlobal(
+  "EventSource",
+  class EventSource {
+    onmessage: ((event: MessageEvent) => void) | null = null;
+    onerror: ((event: Event) => void) | null = null;
+    onopen: ((event: Event) => void) | null = null;
+
+    url: string;
+
+    constructor(url: string) {
+      this.url = url;
+    }
+  },
+);
 
 class SSEClient<T> extends _SSEClient<T> {
-  constructor(url: string, eventSource?: EventSource) {
-    super(url);
-    if (eventSource) {
-      this._eventSource = eventSource;
-    }
+  constructor(url: string, onStatusUpdate?: (status: SSEClientStatus) => void) {
+    super(url, onStatusUpdate);
   }
 
   connect(onOpen?: (event: Event) => void): void {
@@ -56,8 +68,10 @@ function _for(duration: number): Promise<void> {
 describe("SSEClient", () => {
   describe("connect", () => {
     it("should not create a new EventSource if already connected", () => {
+      const client = new SSEClient("http://localhost:3000");
+
       const eventSource = mockEventSource();
-      const client = new SSEClient("http://localhost:3000", eventSource);
+      client.eventSource = eventSource;
 
       client.connect();
       client.connect();
@@ -66,8 +80,10 @@ describe("SSEClient", () => {
     });
 
     it("should connect to the server", () => {
+      const client = new SSEClient("http://localhost:3000");
+
       const eventSource = mockEventSource();
-      const client = new SSEClient("http://localhost:3000", eventSource);
+      client.eventSource = eventSource;
 
       const handleOpen = vi.fn();
       client.connect(handleOpen);
@@ -76,25 +92,54 @@ describe("SSEClient", () => {
 
       expect(handleOpen).toHaveBeenCalled();
     });
+
+    it("should update the status", async () => {
+      const handleStatusUpdate = vi.fn();
+      const client = new SSEClient("http://localhost:3000", handleStatusUpdate);
+
+      client.connect();
+      expect(handleStatusUpdate).toHaveBeenCalledWith(
+        SSEClientStatus.CONNECTING,
+      );
+
+      client._simulateOpen(new Event("open"));
+
+      expect(handleStatusUpdate).toHaveBeenCalledWith(SSEClientStatus.OPEN);
+    });
   });
 
   describe("close", () => {
     it("should close the connection", () => {
-      const eventSource = mockEventSource();
-      const client = new SSEClient("http://localhost:3000", eventSource);
+      const client = new SSEClient("http://localhost:3000");
 
-      client.connect();
+      const eventSource = mockEventSource();
+      client.eventSource = eventSource;
+
       client.close();
 
       expect(eventSource.close).toHaveBeenCalled();
       expect(client.eventSource).toBeNull();
     });
+
+    it("should update the status", () => {
+      const handleStatusUpdate = vi.fn();
+      const client = new SSEClient("http://localhost:3000", handleStatusUpdate);
+
+      const eventSource = mockEventSource();
+      client.eventSource = eventSource;
+
+      client.close();
+
+      expect(handleStatusUpdate).toHaveBeenCalledWith(SSEClientStatus.CLOSED);
+    });
   });
 
   describe("catch", () => {
     it("should catch errors", () => {
+      const client = new SSEClient("http://localhost:3000");
+
       const eventSource = mockEventSource();
-      const client = new SSEClient("http://localhost:3000", eventSource);
+      client.eventSource = eventSource;
 
       client.connect();
 
@@ -105,12 +150,29 @@ describe("SSEClient", () => {
 
       client._simulateError(error);
     });
+
+    it("should close the connection", () => {
+      const client = new SSEClient("http://localhost:3000");
+
+      const eventSource = mockEventSource();
+      client.eventSource = eventSource;
+
+      client.connect();
+
+      const error = new Event("error");
+      client.catch(() => {});
+
+      client._simulateError(error);
+      expect(eventSource.close).toHaveBeenCalled();
+    });
   });
 
   describe("on", () => {
     it("should listen to messages", () => {
+      const client = new SSEClient("http://localhost:3000");
+
       const eventSource = mockEventSource();
-      const client = new SSEClient("http://localhost:3000", eventSource);
+      client.eventSource = eventSource;
 
       client.connect();
 
@@ -123,8 +185,10 @@ describe("SSEClient", () => {
     });
 
     it("should await the handler if it returns a promise", async () => {
+      const client = new SSEClient("http://localhost:3000");
+
       const eventSource = mockEventSource();
-      const client = new SSEClient("http://localhost:3000", eventSource);
+      client.eventSource = eventSource;
 
       client.connect();
 
@@ -159,6 +223,16 @@ describe("SSEClient", () => {
         const client = new SSEClient("http://localhost:3000");
 
         expect(client.url).toBe("http://localhost:3000");
+      });
+    });
+  });
+
+  describe("status", () => {
+    describe("getter", () => {
+      it("should return the status (by default CLOSED)", () => {
+        const client = new SSEClient("http://localhost:3000");
+
+        expect(client.status).toBe(SSEClientStatus.CLOSED);
       });
     });
   });

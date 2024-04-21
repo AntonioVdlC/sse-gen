@@ -7,6 +7,12 @@ type EventHandlerGenerator<T> = AsyncGenerator<
   MessageEvent<T>
 >;
 
+enum SSEClientStatus {
+  CONNECTING = "CONNECTING",
+  OPEN = "OPEN",
+  CLOSED = "CLOSED",
+}
+
 class SSEClient<T> {
   protected _url: string;
   protected _eventSource: EventSource | null;
@@ -16,21 +22,34 @@ class SSEClient<T> {
 
   private _eventHandler: EventHandlerGenerator<T>;
 
+  protected _status: SSEClientStatus = SSEClientStatus.CLOSED;
+  private _onStatusUpdate?: (status: SSEClientStatus) => void;
+
   get url(): string {
     return this._url;
   }
 
-  constructor(url: string) {
+  get status(): SSEClientStatus {
+    return this._status;
+  }
+
+  constructor(url: string, onStatusUpdate?: (status: SSEClientStatus) => void) {
     this._url = url;
     this._eventSource = null;
     this._eventHandler = this._createEventHandler();
     this._eventHandler.next();
+    this._onStatusUpdate = onStatusUpdate;
   }
 
   connect(): void {
     if (!this._eventSource) {
       this._eventSource = new EventSource(this._url);
+      this._updateStatus(SSEClientStatus.CONNECTING);
     }
+
+    this._eventSource.onopen = () => {
+      this._updateStatus(SSEClientStatus.OPEN);
+    };
 
     this._eventSource.onmessage = async (event) => {
       await this._eventHandler.next(event);
@@ -38,6 +57,7 @@ class SSEClient<T> {
 
     this._eventSource.onerror = (event) => {
       this._handleError?.(event);
+      this.close();
     };
   }
 
@@ -45,6 +65,7 @@ class SSEClient<T> {
     if (this._eventSource) {
       this._eventSource.close();
       this._eventSource = null;
+      this._updateStatus(SSEClientStatus.CLOSED);
     }
   }
 
@@ -64,7 +85,12 @@ class SSEClient<T> {
       }
     }
   }
+
+  private _updateStatus(status: SSEClientStatus): void {
+    this._status = status;
+    this._onStatusUpdate?.(status);
+  }
 }
 
-export { SSEClient };
+export { SSEClient, SSEClientStatus };
 export type { EventHandlerMessage, EventHandlerError };
