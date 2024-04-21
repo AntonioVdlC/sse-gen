@@ -1,5 +1,5 @@
 type EventHandlerOpen = (event: Event) => void;
-type EventHandlerMessage = (event: MessageEvent) => void;
+type EventHandlerMessage = (event: MessageEvent) => void | Promise<void>;
 type EventHandlerError = (event: Event) => void;
 
 class SSEClient {
@@ -9,6 +9,12 @@ class SSEClient {
   private _handleMessage?: EventHandlerMessage;
   private _handleError?: EventHandlerError;
 
+  private _eventHandler: AsyncGenerator<
+    MessageEvent | undefined,
+    unknown,
+    MessageEvent
+  >;
+
   get url(): string {
     return this._url;
   }
@@ -16,6 +22,8 @@ class SSEClient {
   constructor(url: string) {
     this._url = url;
     this._eventSource = null;
+    this._eventHandler = this._createEventHandler();
+    this._eventHandler.next();
   }
 
   connect(): void {
@@ -23,16 +31,12 @@ class SSEClient {
       this._eventSource = new EventSource(this._url);
     }
 
-    this._eventSource.onmessage = (event) => {
-      if (this._handleMessage) {
-        this._handleMessage(event);
-      }
+    this._eventSource.onmessage = async (event) => {
+      await this._eventHandler.next(event);
     };
 
     this._eventSource.onerror = (event) => {
-      if (this._handleError) {
-        this._handleError(event);
-      }
+      this._handleError?.(event);
     };
   }
 
@@ -44,19 +48,24 @@ class SSEClient {
   }
 
   catch(handleError: EventHandlerError): void {
-    if (!this._eventSource) {
-      throw new Error("EventSource is not initialized");
-    }
-
     this._handleError = handleError;
   }
 
   on(handleMessage: EventHandlerMessage): void {
-    if (!this._eventSource) {
-      throw new Error("EventSource is not initialized");
-    }
-
     this._handleMessage = handleMessage;
+  }
+
+  private async *_createEventHandler(): AsyncGenerator<
+    MessageEvent | undefined,
+    unknown,
+    MessageEvent
+  > {
+    while (true) {
+      const event = yield;
+      if (event) {
+        await this._handleMessage?.(event);
+      }
+    }
   }
 }
 

@@ -47,6 +47,12 @@ function mockEventSource(): EventSource {
   } as unknown as EventSource;
 }
 
+function _for(duration: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, duration);
+  });
+}
+
 describe("SSEClient", () => {
   describe("connect", () => {
     it("should not create a new EventSource if already connected", () => {
@@ -99,18 +105,10 @@ describe("SSEClient", () => {
 
       client._simulateError(error);
     });
-
-    it("should throw an error if EventSource is not initialized", () => {
-      const client = new SSEClient("http://localhost:3000");
-
-      expect(() => {
-        client.catch(vi.fn());
-      }).toThrowError("EventSource is not initialized");
-    });
   });
 
   describe("on", () => {
-    it("should listen to messages if no eventType is passed", () => {
+    it("should listen to messages", () => {
       const eventSource = mockEventSource();
       const client = new SSEClient("http://localhost:3000", eventSource);
 
@@ -124,12 +122,34 @@ describe("SSEClient", () => {
       client._simulateMessage(message);
     });
 
-    it("should throw an error if EventSource is not initialized", () => {
-      const client = new SSEClient("http://localhost:3000");
+    it("should await the handler if it returns a promise", async () => {
+      const eventSource = mockEventSource();
+      const client = new SSEClient("http://localhost:3000", eventSource);
 
-      expect(() => {
-        client.on(vi.fn());
-      }).toThrowError("EventSource is not initialized");
+      client.connect();
+
+      const events: Array<MessageEvent> = [];
+      const message_1 = new MessageEvent("message", { data: "Hello, world!" });
+      const message_2 = new MessageEvent("message", { data: "Hello, world!" });
+      const message_3 = new MessageEvent("message", { data: "Hello, world!" });
+
+      client.on(async (event) => {
+        await _for(50);
+        events.push(event);
+      });
+
+      expect(events).toEqual([]);
+      client._simulateMessage(message_1);
+      await _for(100);
+      expect(events).toEqual([message_1]);
+
+      client._simulateMessage(message_2);
+      client._simulateMessage(message_3);
+      expect(events).toEqual([message_1]);
+      await _for(100);
+      expect(events).toEqual([message_1, message_2]);
+      await _for(100);
+      expect(events).toEqual([message_1, message_2, message_3]);
     });
   });
 
