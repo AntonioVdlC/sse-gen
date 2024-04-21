@@ -25,6 +25,12 @@ class SSEClient<T> {
   protected _status: SSEClientStatus = SSEClientStatus.CLOSED;
   private _onStatusUpdate?: (status: SSEClientStatus) => void;
 
+  protected _reconnect?: {
+    attempts: number;
+    maxAttempts: number;
+    delay: number;
+  };
+
   get url(): string {
     return this._url;
   }
@@ -33,12 +39,27 @@ class SSEClient<T> {
     return this._status;
   }
 
-  constructor(url: string, onStatusUpdate?: (status: SSEClientStatus) => void) {
+  constructor(
+    url: string,
+    options?: {
+      onStatusUpdate?: (status: SSEClientStatus) => void;
+      reconnect?: { maxAttempts: number; delay: number };
+    },
+  ) {
     this._url = url;
     this._eventSource = null;
+
     this._eventHandler = this._createEventHandler();
     this._eventHandler.next();
-    this._onStatusUpdate = onStatusUpdate;
+
+    this._onStatusUpdate = options?.onStatusUpdate;
+
+    if (options?.reconnect) {
+      this._reconnect = {
+        ...options.reconnect,
+        attempts: 0,
+      };
+    }
   }
 
   connect(): void {
@@ -47,6 +68,9 @@ class SSEClient<T> {
 
     this._eventSource.onopen = () => {
       this._updateStatus(SSEClientStatus.OPEN);
+      if (this._reconnect) {
+        this._reconnect.attempts = 0;
+      }
     };
 
     this._eventSource.onmessage = async (event) => {
@@ -56,6 +80,7 @@ class SSEClient<T> {
     this._eventSource.onerror = (event) => {
       this._handleError?.(event);
       this.close();
+      this._handleReconnect();
     };
   }
 
@@ -84,9 +109,20 @@ class SSEClient<T> {
     }
   }
 
-  private _updateStatus(status: SSEClientStatus): void {
+  protected _updateStatus(status: SSEClientStatus): void {
     this._status = status;
     this._onStatusUpdate?.(status);
+  }
+
+  protected _handleReconnect(): void {
+    if (this._reconnect) {
+      if (this._reconnect.attempts < this._reconnect.maxAttempts) {
+        this._reconnect.attempts++;
+        setTimeout(() => {
+          this.connect();
+        }, this._reconnect.delay);
+      }
+    }
   }
 }
 

@@ -18,10 +18,6 @@ vi.stubGlobal(
 );
 
 class SSEClient<T> extends _SSEClient<T> {
-  constructor(url: string, onStatusUpdate?: (status: SSEClientStatus) => void) {
-    super(url, onStatusUpdate);
-  }
-
   connect(onOpen?: (event: Event) => void): void {
     super.connect();
 
@@ -34,8 +30,10 @@ class SSEClient<T> extends _SSEClient<T> {
     return this._eventSource;
   }
 
-  set eventSource(eventSource: EventSource) {
-    this._eventSource = eventSource;
+  get reconnect():
+    | { attempts: number; maxAttempts: number; delay: number }
+    | undefined {
+    return this._reconnect;
   }
 
   _simulateOpen(event: Event) {
@@ -72,7 +70,9 @@ describe("SSEClient", () => {
 
     it("should update the status", async () => {
       const handleStatusUpdate = vi.fn();
-      const client = new SSEClient("http://localhost:3000", handleStatusUpdate);
+      const client = new SSEClient("http://localhost:3000", {
+        onStatusUpdate: handleStatusUpdate,
+      });
 
       client.connect();
       expect(handleStatusUpdate).toHaveBeenCalledWith(
@@ -99,7 +99,9 @@ describe("SSEClient", () => {
 
     it("should update the status", () => {
       const handleStatusUpdate = vi.fn();
-      const client = new SSEClient("http://localhost:3000", handleStatusUpdate);
+      const client = new SSEClient("http://localhost:3000", {
+        onStatusUpdate: handleStatusUpdate,
+      });
 
       client.connect();
       client.close();
@@ -177,6 +179,90 @@ describe("SSEClient", () => {
       expect(events).toEqual([message_1, message_2]);
       await _for(70);
       expect(events).toEqual([message_1, message_2, message_3]);
+    });
+  });
+
+  describe("reconnect", () => {
+    it("should not try to reconnect if option is not set", () => {
+      const client = new SSEClient("http://localhost:3000");
+
+      client.connect();
+
+      const error = new Event("error");
+      client._simulateError(error);
+
+      expect(client.status).toBe(SSEClientStatus.CLOSED);
+    });
+
+    it("should try to reconnect if option is set (success)", async () => {
+      const client = new SSEClient("http://localhost:3000", {
+        reconnect: {
+          maxAttempts: 3,
+          delay: 50,
+        },
+      });
+
+      client.connect();
+
+      const error = new Event("error");
+      client._simulateError(error);
+
+      expect(client.status).toBe(SSEClientStatus.CLOSED);
+      expect(client.reconnect?.attempts).toBe(1);
+
+      await _for(70);
+      expect(client.status).toBe(SSEClientStatus.CONNECTING);
+      client._simulateOpen(new Event("open"));
+
+      expect(client.status).toBe(SSEClientStatus.OPEN);
+      expect(client.reconnect?.attempts).toBe(0);
+    });
+
+    it("should try to reconnect if option is set (failed)", async () => {
+      class SSEClient_Reconnect<T> extends SSEClient<T> {
+        connect() {
+          if (!this._eventSource) {
+            this._eventSource = new EventSource(this.url);
+          }
+          this._updateStatus(SSEClientStatus.CONNECTING);
+          this._eventSource.onerror = () => {
+            this.close();
+            this._handleReconnect();
+          };
+        }
+      }
+
+      const client = new SSEClient_Reconnect("http://localhost:3000", {
+        reconnect: {
+          maxAttempts: 3,
+          delay: 50,
+        },
+      });
+
+      client.connect();
+
+      const error = new Event("error");
+      client._simulateError(error);
+
+      expect(client.status).toBe(SSEClientStatus.CLOSED);
+      expect(client.reconnect?.attempts).toBe(1);
+
+      await _for(70);
+      expect(client.status).toBe(SSEClientStatus.CONNECTING);
+      client._simulateError(error);
+      expect(client.reconnect?.attempts).toBe(2);
+
+      await _for(70);
+      expect(client.status).toBe(SSEClientStatus.CONNECTING);
+      client._simulateError(error);
+      expect(client.reconnect?.attempts).toBe(3);
+
+      await _for(70);
+      expect(client.status).toBe(SSEClientStatus.CONNECTING);
+      client._simulateError(error);
+
+      await _for(70);
+      expect(client.status).toBe(SSEClientStatus.CLOSED);
     });
   });
 
