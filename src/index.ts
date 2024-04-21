@@ -1,61 +1,59 @@
-export class SSEClient {
-  #url: string;
-  #eventSource: EventSource | null;
+type EventHandlerOpen = (event: Event) => void;
+type EventHandlerMessage = (event: MessageEvent) => void;
+type EventHandlerError = (event: Event) => void;
 
-  constructor(url: string) {
-    this.#url = url;
-    this.#eventSource = null;
+class SSEClient {
+  protected _url: string;
+  protected _eventSource: EventSource | null;
+
+  get url(): string {
+    return this._url;
   }
 
-  connect(handleOpen?: (event: Event) => void): void {
-    if (!this.#eventSource) {
-      this.#eventSource = new EventSource(this.#url);
+  constructor(url: string) {
+    this._url = url;
+    this._eventSource = null;
+  }
+
+  connect(handleOpen?: EventHandlerOpen): void {
+    if (!this._eventSource) {
+      this._eventSource = new EventSource(this._url);
     }
 
     if (handleOpen) {
-      this.#eventSource.onopen = handleOpen;
-    }
-  }
-
-  close(): void {
-    if (this.#eventSource) {
-      this.#eventSource.close();
-    }
-  }
-
-  catch(handleError: (event: Event) => void): void {
-    if (this.#eventSource) {
-      this.#eventSource.onerror = (event) => {
-        handleError(event);
+      this._eventSource.onopen = (event) => {
+        handleOpen(event);
       };
     }
   }
 
-  on(handleEvent: (event: MessageEvent) => void): void {
-    if (!this.#eventSource) {
+  close(): void {
+    if (this._eventSource) {
+      this._eventSource.close();
+      this._eventSource = null;
+    }
+  }
+
+  catch(handleError: EventHandlerError): void {
+    if (!this._eventSource) {
       throw new Error("EventSource is not initialized");
     }
 
-    this.#eventSource.onmessage = handleEvent;
+    this._eventSource.onerror = (event) => {
+      handleError(event);
+    };
   }
 
-  get url(): string {
-    return this.#url;
-  }
-
-  set url(url: string) {
-    this.#url = url;
-  }
-
-  get eventSource(): EventSource {
-    if (!this.#eventSource) {
+  on(handleEvent: EventHandlerMessage): void {
+    if (!this._eventSource) {
       throw new Error("EventSource is not initialized");
     }
 
-    return this.#eventSource;
-  }
-
-  set eventSource(eventSource: EventSource) {
-    this.#eventSource = eventSource;
+    this._eventSource.onmessage = (event) => {
+      handleEvent(event);
+    };
   }
 }
+
+export { SSEClient };
+export type { EventHandlerOpen, EventHandlerMessage, EventHandlerError };

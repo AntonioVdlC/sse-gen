@@ -5,8 +5,16 @@ class SSEClient extends _SSEClient {
   constructor(url: string, eventSource?: EventSource) {
     super(url);
     if (eventSource) {
-      this.eventSource = eventSource;
+      this._eventSource = eventSource;
     }
+  }
+
+  get eventSource(): EventSource | null {
+    return this._eventSource;
+  }
+
+  set eventSource(eventSource: EventSource) {
+    this._eventSource = eventSource;
   }
 
   _simulateOpen(event: Event) {
@@ -65,6 +73,7 @@ describe("SSEClient", () => {
       client.close();
 
       expect(eventSource.close).toHaveBeenCalled();
+      expect(client.eventSource).toBeNull();
     });
   });
 
@@ -82,6 +91,14 @@ describe("SSEClient", () => {
 
       client._simulateError(error);
     });
+
+    it("should throw an error if EventSource is not initialized", () => {
+      const client = new SSEClient("http://localhost:3000");
+
+      expect(() => {
+        client.catch(vi.fn());
+      }).toThrowError("EventSource is not initialized");
+    });
   });
 
   describe("on", () => {
@@ -98,6 +115,14 @@ describe("SSEClient", () => {
 
       client._simulateMessage(message);
     });
+
+    it("should throw an error if EventSource is not initialized", () => {
+      const client = new SSEClient("http://localhost:3000");
+
+      expect(() => {
+        client.on(vi.fn());
+      }).toThrowError("EventSource is not initialized");
+    });
   });
 
   describe("url", () => {
@@ -106,43 +131,6 @@ describe("SSEClient", () => {
         const client = new SSEClient("http://localhost:3000");
 
         expect(client.url).toBe("http://localhost:3000");
-      });
-    });
-    describe("setter", () => {
-      it("should set the URL", () => {
-        const client = new SSEClient("http://localhost:3000");
-
-        client.url = "http://localhost:3001";
-
-        expect(client.url).toBe("http://localhost:3001");
-      });
-    });
-  });
-
-  describe("eventSource", () => {
-    describe("getter", () => {
-      it("should throw an error if EventSource is not initialized", () => {
-        const client = new SSEClient("http://localhost:3000");
-
-        expect(() => client.eventSource).toThrowError(
-          "EventSource is not initialized",
-        );
-      });
-      it("should return the EventSource", () => {
-        const eventSource = mockEventSource();
-        const client = new SSEClient("http://localhost:3000", eventSource);
-
-        expect(client.eventSource).toBe(eventSource);
-      });
-    });
-    describe("setter", () => {
-      it("should set the EventSource", () => {
-        const eventSource = mockEventSource();
-        const client = new SSEClient("http://localhost:3000");
-
-        client.eventSource = eventSource;
-
-        expect(client.eventSource).toBe(eventSource);
       });
     });
   });
