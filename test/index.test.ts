@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { SSEClient as _SSEClient } from "../src";
 
-class SSEClient extends _SSEClient {
+class SSEClient<T> extends _SSEClient<T> {
   constructor(url: string, eventSource?: EventSource) {
     super(url);
     if (eventSource) {

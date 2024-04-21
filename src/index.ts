@@ -1,19 +1,20 @@
-type EventHandlerOpen = (event: Event) => void;
-type EventHandlerMessage = (event: MessageEvent) => void | Promise<void>;
+type EventHandlerMessage<T> = (event: MessageEvent<T>) => void | Promise<void>;
 type EventHandlerError = (event: Event) => void;
 
-class SSEClient {
+type EventHandlerGenerator<T> = AsyncGenerator<
+  MessageEvent<T> | undefined,
+  void,
+  MessageEvent<T>
+>;
+
+class SSEClient<T> {
   protected _url: string;
   protected _eventSource: EventSource | null;
 
-  private _handleMessage?: EventHandlerMessage;
+  private _handleMessage?: EventHandlerMessage<T>;
   private _handleError?: EventHandlerError;
 
-  private _eventHandler: AsyncGenerator<
-    MessageEvent | undefined,
-    unknown,
-    MessageEvent
-  >;
+  private _eventHandler: EventHandlerGenerator<T>;
 
   get url(): string {
     return this._url;
@@ -51,15 +52,11 @@ class SSEClient {
     this._handleError = handleError;
   }
 
-  on(handleMessage: EventHandlerMessage): void {
+  on(handleMessage: EventHandlerMessage<T>): void {
     this._handleMessage = handleMessage;
   }
 
-  private async *_createEventHandler(): AsyncGenerator<
-    MessageEvent | undefined,
-    unknown,
-    MessageEvent
-  > {
+  private async *_createEventHandler(): EventHandlerGenerator<T> {
     while (true) {
       const event = yield;
       if (event) {
@@ -70,4 +67,4 @@ class SSEClient {
 }
 
 export { SSEClient };
-export type { EventHandlerOpen, EventHandlerMessage, EventHandlerError };
+export type { EventHandlerMessage, EventHandlerError };
